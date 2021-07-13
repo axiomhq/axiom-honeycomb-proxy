@@ -2,89 +2,116 @@ package http
 
 import (
 	"bytes"
-	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 	"sync"
 
 	"github.com/axiomhq/axiom-go/axiom"
 )
 
-const (
-	honeyCombPath  = "/honeycomb/1/events/"
-	defaultDataset = "axiom-loki-proxy"
-	datasetKey     = "_axiom_dataset"
-)
-
-type ingestFunc func(ctx context.Context, id string, opts axiom.IngestOptions, events ...axiom.Event) (*axiom.IngestStatus, error)
-
-// implements the http.Server interface
-type PushHandler struct {
-	sync.Mutex
-	ingestFn      ingestFunc
-	honeycombAddr string
+type EventHandler struct {
+	*pushHandler
 }
 
-func NewPushHandler(client *axiom.Client, honeycombAddr string) *PushHandler {
-	return &PushHandler{
-		honeycombAddr: honeycombAddr,
-		//ingestFn: client.Datasets.IngestEvents,
+func NewEventHandler(client *axiom.Client, apiUrl string) (*EventHandler, error) {
+	push, err := newPushHandler(apiUrl, "1/events/", client)
+	if err != nil {
+		return nil, err
 	}
+	return &EventHandler{
+		pushHandler: push,
+	}, nil
 }
 
-func PushPath() string {
-	return honeyCombPath
-}
-
-func handleErr(w http.ResponseWriter, err error) {
-	http.Error(w, err.Error(), http.StatusInternalServerError)
-}
-
-func (push *PushHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	push.Lock()
-	defer push.Unlock()
-
-	var (
-		data     map[string]interface{}
-		dataset  = r.URL.Path[len(honeyCombPath):]
-		url, err = url.Parse(push.honeycombAddr)
-		typ      = r.Header.Get("Content-Type")
-	)
-
-	switch typ {
-	case "application/json", "application/x-www-form-urlencoded":
-		body, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		url.Path = path.Join(url.Path, dataset)
-
-		client := &http.Client{}
-		newReq, err := http.NewRequest("POST", url.String(), bytes.NewBuffer(body))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		newReq.Header = r.Header.Clone()
-		resp, err := client.Do(newReq)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		fmt.Println(resp, err)
-	default:
-		err = fmt.Errorf("unsupported Content-Type %v", typ)
-	}
-
-	fmt.Println(data)
-
+func (eh *EventHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	rdr, err := eh.forward(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	ev := &axiom.Event{}
+	json.NewDecoder(rdr).Decode(ev)
+	fmt.Println(ev)
+}
+
+type BatchHandler struct {
+	*pushHandler
+}
+
+func NewBatchHandler(client *axiom.Client, apiUrl string) (*BatchHandler, error) {
+	push, err := newPushHandler(apiUrl, "1/batch/", client)
+	if err != nil {
+		return nil, err
+	}
+	return &BatchHandler{
+		pushHandler: push,
+	}, nil
+}
+
+func (bh *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	rdr, err := bh.forward(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ev := &axiom.Event{}
+	json.NewDecoder(rdr).Decode(ev)
+	fmt.Println(ev)
+}
+
+// implements the http.Server interface
+type pushHandler struct {
+	sync.Mutex
+	client     *axiom.Client
+	apiUrl     *url.URL
+	httpClient *http.Client
+}
+
+func newPushHandler(addr string, apiPath string, client *axiom.Client) (*pushHandler, error) {
+	apiUrl, err := url.Parse(addr)
+	if err != nil {
+		return nil, err
+	}
+	apiUrl.Path = path.Join(apiUrl.Path, apiPath)
+	return &pushHandler{
+		apiUrl:     apiUrl,
+		client:     client,
+		httpClient: &http.Client{},
+	}, nil
+}
+
+func (push *pushHandler) forward(r *http.Request) (io.Reader, error) {
+	push.Lock()
+	defer push.Unlock()
+
+	splitStr := strings.Split(r.URL.Path, "/")
+	if len(splitStr) != 5 {
+		return nil, fmt.Errorf("invalid path %s", r.URL.Path)
+	}
+	dataset := splitStr[4]
+	apiUrl := *push.apiUrl
+	apiUrl.Path = path.Join(apiUrl.Path, dataset)
+
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	newReq, err := http.NewRequest("POST", apiUrl.String(), bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+
+	//newReq.Header = r.Header.Clone()
+	if _, err := push.httpClient.Do(newReq); err != nil {
+		return nil, err
+	}
+
+	return bytes.NewBuffer(body), nil
 }
