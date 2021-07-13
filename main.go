@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/axiomhq/axiom-go/axiom"
 	httpProxy "github.com/axiomhq/axiom-honeycomb-proxy/http"
@@ -31,19 +32,20 @@ func initHttpPushHandler(mux *http.ServeMux, client *axiom.Client, addr string) 
 
 func main() {
 	var (
-		//deploymentURL = os.Getenv("AXM_DEPLOYMENT_URL")
-		//accessToken   = os.Getenv("AXM_ACCESS_TOKEN")
+		deploymentURL     = os.Getenv("AXM_DEPLOYMENT_URL")
+		accessToken       = os.Getenv("AXM_ACCESS_TOKEN")
 		addr              = flag.String("addr", ":3111", "a string <ip>:<port>")
 		honeycombEndpoint = flag.String("honeycomb", "https://api.honeycomb.io", "honeycomb api endpoint")
 	)
 
-	//client, err := axiom.NewClient(deploymentURL, accessToken)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
+	client, err := axiom.NewClient(deploymentURL, accessToken)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
 
 	mux := http.NewServeMux()
-	if err := initHttpPushHandler(mux, nil, *honeycombEndpoint); err != nil {
+	if err := initHttpPushHandler(mux, client, *honeycombEndpoint); err != nil {
 		panic(err)
 	}
 

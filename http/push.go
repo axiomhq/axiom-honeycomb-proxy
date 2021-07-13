@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,14 +31,20 @@ func NewEventHandler(client *axiom.Client, apiUrl string) (*EventHandler, error)
 }
 
 func (eh *EventHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	rdr, err := eh.forward(r)
+	timeStr := r.Header.Get("X-Honeycomb-Event-Time")
+	dataset, rdr, err := eh.forward(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ev := &axiom.Event{}
-	json.NewDecoder(rdr).Decode(ev)
-	fmt.Println(ev)
+
+	ev := axiom.Event{}
+	if err := json.NewDecoder(rdr).Decode(&ev); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	ev["_time"] = timeStr
+	eh.multiplex(r.Context(), w, dataset, ev)
 }
 
 type BatchHandler struct {
@@ -55,14 +62,25 @@ func NewBatchHandler(client *axiom.Client, apiUrl string) (*BatchHandler, error)
 }
 
 func (bh *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	rdr, err := bh.forward(r)
+	dataset, rdr, err := bh.forward(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ev := &axiom.Event{}
-	json.NewDecoder(rdr).Decode(ev)
-	fmt.Println(ev)
+	data := make([]map[string]interface{}, 0)
+	if err := json.NewDecoder(rdr).Decode(&data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	events := make([]axiom.Event, len(data))
+	for i, d := range data {
+		events[i] = d["data"].(map[string]interface{})
+		if timeStr, ok := d["time"].(string); ok {
+			events[i]["_time"] = timeStr
+		}
+	}
+
+	bh.multiplex(r.Context(), w, dataset, events...)
 }
 
 // implements the http.Server interface
@@ -86,13 +104,13 @@ func newPushHandler(addr string, apiPath string, client *axiom.Client) (*pushHan
 	}, nil
 }
 
-func (push *pushHandler) forward(r *http.Request) (io.Reader, error) {
+func (push *pushHandler) forward(r *http.Request) (string, io.Reader, error) {
 	push.Lock()
 	defer push.Unlock()
 
 	splitStr := strings.Split(r.URL.Path, "/")
 	if len(splitStr) != 5 {
-		return nil, fmt.Errorf("invalid path %s", r.URL.Path)
+		return "", nil, fmt.Errorf("invalid path %s", r.URL.Path)
 	}
 	dataset := splitStr[4]
 	apiUrl := *push.apiUrl
@@ -100,18 +118,42 @@ func (push *pushHandler) forward(r *http.Request) (io.Reader, error) {
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	newReq, err := http.NewRequest("POST", apiUrl.String(), bytes.NewBuffer(body))
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	//newReq.Header = r.Header.Clone()
 	if _, err := push.httpClient.Do(newReq); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
-	return bytes.NewBuffer(body), nil
+	return dataset, bytes.NewBuffer(body), nil
+}
+
+func (push *pushHandler) multiplex(
+	ctx context.Context,
+	w http.ResponseWriter,
+	dataset string,
+	data ...axiom.Event) {
+
+	opts := axiom.IngestOptions{}
+
+	status, err := push.client.Datasets.IngestEvents(
+		ctx,
+		dataset,
+		opts,
+		data...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
