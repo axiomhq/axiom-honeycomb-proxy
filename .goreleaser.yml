@@ -1,0 +1,146 @@
+project_name: axiom-honeycomb-proxy
+
+builds:
+  - <<: &build_defaults
+      binary: axiom-honeycomb-proxy
+      main: ./cmd/axiom-honeycomb-proxy
+      env:
+        - CGO_ENABLED=0
+      flags:
+        - -buildmode=pie
+        - -installsuffix=cgo
+        - -trimpath
+        - -tags="osusergo netgo static_build"
+      ldflags:
+        - -s -w -extldflags "-fno-PIC -static -Wl -z now -z relro"
+        - -X github.com/axiomhq/pkg/version.release={{ .Version }}
+        - -X github.com/axiomhq/pkg/version.revision={{ .ShortCommit }}
+        - -X github.com/axiomhq/pkg/version.buildDate={{ .CommitDate }}
+        - -X github.com/axiomhq/pkg/version.buildUser=goreleaser
+      mod_timestamp: "{{ .CommitTimestamp }}"
+    id: darwin
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - <<: *build_defaults
+    id: linux
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    
+  - <<: *build_defaults
+    flags:
+      - -buildmode=exe
+      - -installsuffix=cgo
+      - -trimpath
+      - -tags="osusergo netgo static_build"
+    id: linux-no-pie
+    goos:
+      - linux
+    goarch:
+      - arm
+      - 386
+    goarm:
+      - 6
+      - 7
+
+  - <<: *build_defaults
+    flags:
+      - -buildmode=exe
+      - -installsuffix=cgo
+      - -trimpath
+      - -tags="osusergo netgo static_build"
+    id: docker
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+  - <<: *build_defaults
+    id: windows
+    goos:
+      - windows
+    goarch:
+      - amd64
+      - 386
+
+archives:
+  - <<: &archive_defaults
+      name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    id: nix
+    builds:
+      - darwin
+      - linux
+      - linux-no-pie
+    wrap_in_directory: true
+    format: tar.gz
+    files:
+      - LICENSE
+      - README.md
+  - <<: *archive_defaults
+    id: windows
+    builds:
+      - windows
+    wrap_in_directory: false
+    format: zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+milestones:
+  - repo:
+      owner: axiomhq
+      name: axiom-honeycomb-proxy
+    close: true
+    fail_on_error: false
+
+release:
+  github:
+    owner: axiomhq
+    name: axiom-honeycomb-proxy
+  prerelease: auto
+  name_template: "Axiom Honeycomb Proxy v{{ .Version }}"
+
+brews:
+  - name: axiom-honeycomb-proxy
+    description: Honeycomb compatible log forwarding and multiplexing proxy for Axiom
+    homepage: https://axiom.co
+    license: MIT
+    tap:
+      owner: axiomhq
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TOKEN }}"
+    commit_author:
+      name: axiom-automation
+      email: hello@axiom.co
+    skip_upload: auto
+    folder: Formula
+    install: bin.install "{{ .ProjectName }}"
+    test: assert_match "x", "x"
+
+dockers:
+  - ids:
+      - docker
+    image_templates:
+      - "axiomhq/axiom-honeycomb-proxy:{{ .Major }}"
+      - "axiomhq/axiom-honeycomb-proxy:{{ .Major }}.{{ .Minor }}"
+      - "axiomhq/axiom-honeycomb-proxy:{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
+      - "axiomhq/axiom-honeycomb-proxy:latest"

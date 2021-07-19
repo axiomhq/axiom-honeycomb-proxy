@@ -20,8 +20,8 @@ type EventHandler struct {
 	*pushHandler
 }
 
-func NewEventHandler(client *axiom.Client, apiUrl string) (*EventHandler, error) {
-	push, err := newPushHandler(apiUrl, "1/events/", client)
+func NewEventHandler(client *axiom.Client, apiURL string) (*EventHandler, error) {
+	push, err := newPushHandler(apiURL, "1/events/", client)
 	if err != nil {
 		return nil, err
 	}
@@ -51,8 +51,8 @@ type BatchHandler struct {
 	*pushHandler
 }
 
-func NewBatchHandler(client *axiom.Client, apiUrl string) (*BatchHandler, error) {
-	push, err := newPushHandler(apiUrl, "1/batch/", client)
+func NewBatchHandler(client *axiom.Client, apiURL string) (*BatchHandler, error) {
+	push, err := newPushHandler(apiURL, "1/batch/", client)
 	if err != nil {
 		return nil, err
 	}
@@ -83,22 +83,22 @@ func (bh *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	bh.multiplex(r.Context(), w, dataset, events...)
 }
 
-// implements the http.Server interface
 type pushHandler struct {
 	sync.Mutex
 	client     *axiom.Client
-	apiUrl     *url.URL
+	apiURL     *url.URL
 	httpClient *http.Client
 }
 
 func newPushHandler(addr string, apiPath string, client *axiom.Client) (*pushHandler, error) {
-	apiUrl, err := url.Parse(addr)
+	apiURL, err := url.Parse(addr)
 	if err != nil {
 		return nil, err
 	}
-	apiUrl.Path = path.Join(apiUrl.Path, apiPath)
+	apiURL.Path = path.Join(apiURL.Path, apiPath)
+
 	return &pushHandler{
-		apiUrl:     apiUrl,
+		apiURL:     apiURL,
 		client:     client,
 		httpClient: &http.Client{},
 	}, nil
@@ -113,46 +113,39 @@ func (push *pushHandler) forward(r *http.Request) (string, io.Reader, error) {
 		return "", nil, fmt.Errorf("invalid path %s", r.URL.Path)
 	}
 	dataset := splitStr[4]
-	apiUrl := *push.apiUrl
-	apiUrl.Path = path.Join(apiUrl.Path, dataset)
+	apiURL := *push.apiURL
+	apiURL.Path = path.Join(apiURL.Path, dataset)
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		return "", nil, err
 	}
 
-	newReq, err := http.NewRequest("POST", apiUrl.String(), bytes.NewBuffer(body))
+	newReq, err := http.NewRequest("POST", apiURL.String(), bytes.NewBuffer(body))
 	if err != nil {
 		return "", nil, err
 	}
 
 	//newReq.Header = r.Header.Clone()
-	if _, err := push.httpClient.Do(newReq); err != nil {
+	resp, err := push.httpClient.Do(newReq)
+	if err != nil {
 		return "", nil, err
 	}
 
-	return dataset, bytes.NewBuffer(body), nil
+	return dataset, bytes.NewBuffer(body), resp.Body.Close()
 }
 
-func (push *pushHandler) multiplex(
-	ctx context.Context,
-	w http.ResponseWriter,
-	dataset string,
-	data ...axiom.Event) {
-
+func (push *pushHandler) multiplex(ctx context.Context, w http.ResponseWriter, dataset string, data ...axiom.Event) {
 	opts := axiom.IngestOptions{}
 
-	status, err := push.client.Datasets.IngestEvents(
-		ctx,
-		dataset,
-		opts,
-		data...)
+	status, err := push.client.Datasets.IngestEvents(ctx, dataset, opts, data...)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+
 	if err := json.NewEncoder(w).Encode(status); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
