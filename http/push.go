@@ -126,8 +126,9 @@ func (push *pushHandler) forward(r *http.Request) (string, io.Reader, error) {
 		return "", nil, err
 	}
 
-	//newReq.Header = r.Header.Clone()
+	newReq.Header = r.Header.Clone()
 	resp, err := push.httpClient.Do(newReq)
+
 	if err != nil {
 		return "", nil, err
 	}
