@@ -19,3 +19,5 @@ dist
 
 # Local $GOBIN directory for tools
 /bin/
+
+/demo/

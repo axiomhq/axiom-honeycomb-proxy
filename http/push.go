@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,7 +14,20 @@ import (
 	"sync"
 
 	"github.com/axiomhq/axiom-go/axiom"
+	"github.com/klauspost/compress/zstd"
+	"github.com/vmihailenco/msgpack/v5"
+	"go.uber.org/zap"
 )
+
+var logger *zap.Logger
+
+func init() {
+	var err error
+	logger, err = zap.NewProduction()
+	if err != nil {
+		panic(err)
+	}
+}
 
 type RootHandler struct {
 	*pushHandler
@@ -30,9 +44,8 @@ func NewRootHandler(client *axiom.Client, apiURL string) (*RootHandler, error) {
 }
 
 func (rh *RootHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if _, err := rh.forward(r); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	if _, err := rh.forward(w, r); err != nil {
+		logger.Error(err.Error())
 	}
 }
 
@@ -51,9 +64,9 @@ func NewEventHandler(client *axiom.Client, apiURL string) (*EventHandler, error)
 }
 
 func (eh *EventHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	rdr, err := eh.forward(r)
+	rdr, err := eh.forward(w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logger.Error(err.Error())
 		return
 	}
 
@@ -61,14 +74,27 @@ func (eh *EventHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	dataset := splitStr[len(splitStr)-1]
 
 	ev := axiom.Event{}
-	if err := json.NewDecoder(rdr).Decode(&ev); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+	switch r.Header.Get("Content-Type") {
+	case "application/msgpack":
+		if err := msgpack.NewDecoder(rdr).Decode(&ev); err != nil {
+			logger.Error(err.Error())
+			return
+		}
+	default:
+		if err := json.NewDecoder(rdr).Decode(&ev); err != nil {
+			logger.Error(err.Error())
+			return
+		}
 	}
+
 	timeStr := r.Header.Get("X-Honeycomb-Event-Time")
 	if strings.TrimSpace(timeStr) != "" {
 		ev["_time"] = timeStr
 	}
-	eh.multiplex(r.Context(), w, dataset, ev)
+	if err := eh.multiplex(r.Context(), dataset, ev); err != nil {
+		logger.Error(err.Error())
+	}
 }
 
 type BatchHandler struct {
@@ -86,9 +112,9 @@ func NewBatchHandler(client *axiom.Client, apiURL string) (*BatchHandler, error)
 }
 
 func (bh *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	rdr, err := bh.forward(r)
+	rdr, err := bh.forward(w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logger.Error(err.Error())
 		return
 	}
 
@@ -96,8 +122,18 @@ func (bh *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	dataset := splitStr[len(splitStr)-1]
 
 	data := make([]map[string]interface{}, 0)
-	if err := json.NewDecoder(rdr).Decode(&data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+	switch r.Header.Get("Content-Type") {
+	case "application/msgpack":
+		if err := msgpack.NewDecoder(rdr).Decode(&data); err != nil {
+			logger.Error(err.Error())
+			return
+		}
+	default:
+		if err := json.NewDecoder(rdr).Decode(&data); err != nil {
+			logger.Error(err.Error())
+			return
+		}
 	}
 
 	events := make([]axiom.Event, len(data))
@@ -108,7 +144,9 @@ func (bh *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	bh.multiplex(r.Context(), w, dataset, events...)
+	if err := bh.multiplex(r.Context(), dataset, events...); err != nil {
+		logger.Error(err.Error())
+	}
 }
 
 type pushHandler struct {
@@ -134,7 +172,7 @@ func newPushHandler(addr string, apiPath string, client *axiom.Client) (*pushHan
 	}, nil
 }
 
-func (push *pushHandler) forward(r *http.Request) (io.Reader, error) {
+func (push *pushHandler) forward(w http.ResponseWriter, r *http.Request) (io.Reader, error) {
 	push.Lock()
 	defer push.Unlock()
 
@@ -145,37 +183,59 @@ func (push *pushHandler) forward(r *http.Request) (io.Reader, error) {
 
 	newReq, err := http.NewRequest("POST", apiURL.String(), io.TeeReader(r.Body, body))
 	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return nil, err
 	}
 
 	newReq.Header = r.Header.Clone()
 	resp, err := push.httpClient.Do(newReq)
-
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	return body, nil
+	var d io.Reader
+	switch r.Header.Get("Content-Encoding") {
+	case "gzip":
+		decomp, err := gzip.NewReader(body)
+		if err != nil {
+			return nil, err
+		}
+		defer decomp.Close()
+		d = decomp
+	case "zstd":
+		decomp, err := zstd.NewReader(body)
+		if err != nil {
+			return nil, err
+		}
+		defer decomp.Close()
+		d = decomp
+	default:
+		d = body
+	}
+
+	return d, nil
 }
 
-func (push *pushHandler) multiplex(ctx context.Context, w http.ResponseWriter, dataset string, data ...axiom.Event) {
+func (push *pushHandler) multiplex(ctx context.Context, dataset string, data ...axiom.Event) error {
 	opts := axiom.IngestOptions{}
 
 	status, err := push.client.Datasets.IngestEvents(ctx, dataset, opts, data...)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return err
 	}
 
-	w.WriteHeader(http.StatusAccepted)
-
-	if err := json.NewEncoder(w).Encode(status); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	buf := bytes.NewBuffer(nil)
+	if err := json.NewEncoder(buf).Encode(status); err != nil {
+		return err
 	}
+
+	logger.Info(buf.String())
+	return nil
 }
 
 func (push *pushHandler) Path() string {
