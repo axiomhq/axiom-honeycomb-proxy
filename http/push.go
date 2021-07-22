@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
@@ -16,12 +15,33 @@ import (
 	"github.com/axiomhq/axiom-go/axiom"
 )
 
+type RootHandler struct {
+	*pushHandler
+}
+
+func NewRootHandler(client *axiom.Client, apiURL string) (*RootHandler, error) {
+	push, err := newPushHandler(apiURL, "/", client)
+	if err != nil {
+		return nil, err
+	}
+	return &RootHandler{
+		pushHandler: push,
+	}, nil
+}
+
+func (rh *RootHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if _, err := rh.forward(r); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
 type EventHandler struct {
 	*pushHandler
 }
 
 func NewEventHandler(client *axiom.Client, apiURL string) (*EventHandler, error) {
-	push, err := newPushHandler(apiURL, "1/events/", client)
+	push, err := newPushHandler(apiURL, "/1/events/", client)
 	if err != nil {
 		return nil, err
 	}
@@ -31,19 +51,23 @@ func NewEventHandler(client *axiom.Client, apiURL string) (*EventHandler, error)
 }
 
 func (eh *EventHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	timeStr := r.Header.Get("X-Honeycomb-Event-Time")
-	dataset, rdr, err := eh.forward(r)
+	rdr, err := eh.forward(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	splitStr := strings.Split(r.URL.Path, "/")
+	dataset := splitStr[len(splitStr)-1]
+
 	ev := axiom.Event{}
 	if err := json.NewDecoder(rdr).Decode(&ev); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-
-	ev["_time"] = timeStr
+	timeStr := r.Header.Get("X-Honeycomb-Event-Time")
+	if strings.TrimSpace(timeStr) != "" {
+		ev["_time"] = timeStr
+	}
 	eh.multiplex(r.Context(), w, dataset, ev)
 }
 
@@ -52,7 +76,7 @@ type BatchHandler struct {
 }
 
 func NewBatchHandler(client *axiom.Client, apiURL string) (*BatchHandler, error) {
-	push, err := newPushHandler(apiURL, "1/batch/", client)
+	push, err := newPushHandler(apiURL, "/1/batch/", client)
 	if err != nil {
 		return nil, err
 	}
@@ -62,11 +86,15 @@ func NewBatchHandler(client *axiom.Client, apiURL string) (*BatchHandler, error)
 }
 
 func (bh *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	dataset, rdr, err := bh.forward(r)
+	rdr, err := bh.forward(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	splitStr := strings.Split(r.URL.Path, "/")
+	dataset := splitStr[len(splitStr)-1]
+
 	data := make([]map[string]interface{}, 0)
 	if err := json.NewDecoder(rdr).Decode(&data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -87,6 +115,7 @@ type pushHandler struct {
 	sync.Mutex
 	client     *axiom.Client
 	apiURL     *url.URL
+	path       string
 	httpClient *http.Client
 }
 
@@ -101,39 +130,36 @@ func newPushHandler(addr string, apiPath string, client *axiom.Client) (*pushHan
 		apiURL:     apiURL,
 		client:     client,
 		httpClient: &http.Client{},
+		path:       apiPath,
 	}, nil
 }
 
-func (push *pushHandler) forward(r *http.Request) (string, io.Reader, error) {
+func (push *pushHandler) forward(r *http.Request) (io.Reader, error) {
 	push.Lock()
 	defer push.Unlock()
 
-	splitStr := strings.Split(r.URL.Path, "/")
-	if len(splitStr) != 5 {
-		return "", nil, fmt.Errorf("invalid path %s", r.URL.Path)
-	}
-	dataset := splitStr[4]
 	apiURL := *push.apiURL
-	apiURL.Path = path.Join(apiURL.Path, dataset)
+	apiURL.Path = r.URL.Path
 
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return "", nil, err
-	}
+	body := bytes.NewBuffer(nil)
 
-	newReq, err := http.NewRequest("POST", apiURL.String(), bytes.NewBuffer(body))
+	newReq, err := http.NewRequest("POST", apiURL.String(), io.TeeReader(r.Body, body))
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 
 	newReq.Header = r.Header.Clone()
 	resp, err := push.httpClient.Do(newReq)
 
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 
-	return dataset, bytes.NewBuffer(body), resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	return body, nil
 }
 
 func (push *pushHandler) multiplex(ctx context.Context, w http.ResponseWriter, dataset string, data ...axiom.Event) {
@@ -150,4 +176,8 @@ func (push *pushHandler) multiplex(ctx context.Context, w http.ResponseWriter, d
 	if err := json.NewEncoder(w).Encode(status); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (push *pushHandler) Path() string {
+	return push.path
 }

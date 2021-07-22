@@ -12,15 +12,10 @@ import (
 	httpProxy "github.com/axiomhq/axiom-honeycomb-proxy/http"
 )
 
-const (
-	honeycombPathEvents = "/honeycomb/v1/events/"
-	honeycombPathBatch  = "/honeycomb/v1/batch/"
-)
-
 var (
 	deploymentURL     = os.Getenv("AXIOM_DEPLOYMENT_URL")
 	accessToken       = os.Getenv("AXIOM_ACCESS_TOKEN")
-	addr              = flag.String("addr", ":3111", "Listen address <ip>:<port>")
+	addr              = flag.String("addr", ":8080", "Listen address <ip>:<port>")
 	honeycombEndpoint = flag.String("honeycomb", "https://api.honeycomb.io", "Honeycomb api url")
 )
 
@@ -51,9 +46,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	rootHandler, err := httpProxy.NewRootHandler(client, *honeycombEndpoint)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	mux.Handle(honeycombPathEvents, singleEventHandler)
-	mux.Handle(honeycombPathBatch, batchEventHandler)
+	mux.Handle(singleEventHandler.Path(), singleEventHandler)
+	mux.Handle(batchEventHandler.Path(), batchEventHandler)
+	mux.Handle(rootHandler.Path(), rootHandler)
 
 	log.Print("listening on", *addr)
 
