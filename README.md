@@ -85,7 +85,7 @@ docker run -p3111:3111/tcp \
 #### Single event requests
 
 ```shell
-curl http://localhost:3111/honeycomb/v1/events/<DATASET> -X POST \
+curl http://localhost:3111/1/events/<DATASET> -X POST \
   -H "X-Honeycomb-Team: <YOUR-HONEYCOMB-KEY>" \
   -H "X-Honeycomb-Event-Time: 2018-02-09T02:01:23.115Z" \
   -d '{"method":"GET","endpoint":"/foo","shard":"users","dur_ms":32}'
@@ -94,7 +94,7 @@ curl http://localhost:3111/honeycomb/v1/events/<DATASET> -X POST \
 #### Event batch requests
 
 ```shell
-curl  http://localhost:3111/honeycomb/v1/batch/<DATASET> -X POST \
+curl  http://localhost:3111/1/batch/<DATASET> -X POST \
   -H "X-Honeycomb-Team: <YOUR-HONEYCOMB-KEY>" \
   -d '[
         {
