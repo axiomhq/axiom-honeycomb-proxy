@@ -9,19 +9,13 @@ import (
 	"github.com/axiomhq/axiom-go/axiom"
 	"github.com/axiomhq/pkg/version"
 
-	httpProxy "github.com/axiomhq/axiom-honeycomb-proxy/http"
-)
-
-const (
-	honeycombPathEvents = "/honeycomb/v1/events/"
-	honeycombPathBatch  = "/honeycomb/v1/batch/"
+	"github.com/axiomhq/axiom-honeycomb-proxy/proxy"
 )
 
 var (
-	deploymentURL     = os.Getenv("AXIOM_DEPLOYMENT_URL")
-	accessToken       = os.Getenv("AXIOM_ACCESS_TOKEN")
-	addr              = flag.String("addr", ":3111", "Listen address <ip>:<port>")
-	honeycombEndpoint = flag.String("honeycomb", "https://api.honeycomb.io", "Honeycomb api url")
+	deploymentURL = os.Getenv("AXIOM_URL")
+	accessToken   = os.Getenv("AXIOM_TOKEN")
+	addr          = flag.String("addr", ":3111", "Listen address <ip>:<port>")
 )
 
 func main() {
@@ -30,10 +24,10 @@ func main() {
 	flag.Parse()
 
 	if deploymentURL == "" {
-		log.Fatal("missing AXIOM_DEPLOYMENT_URL")
+		log.Fatal("missing AXIOM_URL")
 	}
 	if accessToken == "" {
-		log.Fatal("missing AXIOM_ACCESS_TOKEN")
+		log.Fatal("missing AXIOM_TOKEN")
 	}
 
 	client, err := axiom.NewClient(deploymentURL, accessToken)
@@ -41,22 +35,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	mux := http.NewServeMux()
-
-	singleEventHandler, err := httpProxy.NewEventHandler(client, *honeycombEndpoint)
-	if err != nil {
-		log.Fatal(err)
-	}
-	batchEventHandler, err := httpProxy.NewBatchHandler(client, *honeycombEndpoint)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	mux.Handle(honeycombPathEvents, singleEventHandler)
-	mux.Handle(honeycombPathBatch, batchEventHandler)
-
 	log.Print("listening on", *addr)
 
-	server := http.Server{Handler: mux, Addr: *addr}
+	server := http.Server{Handler: proxy.GetHandler(client), Addr: *addr}
 	log.Fatal(server.ListenAndServe())
 }
