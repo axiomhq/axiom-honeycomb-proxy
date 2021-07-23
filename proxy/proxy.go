@@ -152,7 +152,6 @@ func (m *Multiplexer) multiplexBatch(req *http.Request) error {
 		}
 	}
 	return m.sendEvents(req.Context(), dataset, events...)
-
 }
 
 func (m *Multiplexer) sendEvents(ctx context.Context, dataset string, events ...axiom.Event) error {
