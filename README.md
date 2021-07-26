@@ -18,7 +18,7 @@
 
 ## Introduction
 
-_Axiom Honeycomb Proxy_ ships logs to Axiom and Honeycomb simultaniously.
+_Axiom Honeycomb Proxy_ ships logs to Axiom and Honeycomb simultaneously.
 
 ## Installation
 
