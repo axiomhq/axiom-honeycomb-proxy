@@ -2,7 +2,7 @@
 
 👍🎉 First of all, thank you for your interest in AXIOM-HONEYCOMB-PROXY! We'd love to accept your patches and contributions!🎉👍
 
-This project accepts contributions. In order to contribute, you should pay attention to a few guidelines
+This project accepts contributions. In order to contribute, you should pay attention to a few guidelines:
 
 ## Reporting Issues
 
