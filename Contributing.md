@@ -37,7 +37,7 @@ make test
 make lint
 ```
 
-4. Do your best to have [well-formatted commit messages](https://tbaggery.com/2008/04/19/a-note-about-git-commit-messages.html for each change. This provides consistency throughout the project and ensures that commit messages are able to be formatted properly by various git tools.
+4. Do your best to have [well-formatted commit messages](https://tbaggery.com/2008/04/19/a-note-about-git-commit-messages.html) for each change. This provides consistency throughout the project and ensures that commit messages are able to be formatted properly by various git tools.
 
 5. Finally, push the commits to your fork and submit a [pull request](https://docs.github.com/en/free-pro-team@latest/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request)
 
