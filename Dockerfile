@@ -14,7 +14,7 @@ COPY axiom-honeycomb-proxy /usr/bin/axiom-honeycomb-proxy
 WORKDIR /axiom-honeycomb-proxy
 
 # Expose the default application port.
-EXPOSE 3111/tcp
+EXPOSE 8080/tcp
 
 # Set the binary as entrypoint.
 ENTRYPOINT [ "/usr/bin/axiom-honeycomb-proxy" ]
