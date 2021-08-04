@@ -64,17 +64,19 @@ Docker images are available on [DockerHub][docker].
 
 1. Set the following environment variables:
 
-* `AXIOM_URL`: **https://cloud.axiom.co**
 * `AXIOM_TOKEN`: **Personal Access** or **Ingest** token. Can be
 created under `Profile` or `Settings > Ingest Tokens`. For security reasons it
 is advised to use an Ingest Token with minimal privileges only.
 
-1. Run it: `./axiom-honeycomb-proxy` or using docker:
+When using Axiom Selfhost:
+
+* `AXIOM_URL`: URL of the Axiom deployment to use.
+
+2. Run it: `./axiom-honeycomb-proxy` or using Docker:
 
 ```shell
 docker run -p8080:8080/tcp \
-  -e=AXIOM_URL=<https://cloud.axiom.co> \
-  -e=AXIOM_TOKEN=<xapt-xxxxx-xxxxxx> \
+  -e=AXIOM_TOKEN=<YOUR_AXIOM_TOKEN> \
   axiomhq/axiom-honeycomb-proxy
 ```
 
