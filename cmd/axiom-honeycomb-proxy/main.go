@@ -25,7 +25,7 @@ func main() {
 	flag.Parse()
 
 	if deploymentURL == "" {
-		log.Fatal("missing AXIOM_URL")
+		deploymentURL = axiom.CloudURL
 	}
 	if accessToken == "" {
 		log.Fatal("missing AXIOM_TOKEN")
