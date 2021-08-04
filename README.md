@@ -74,7 +74,7 @@ is advised to use an Ingest Token with minimal privileges only.
 ```shell
 docker run -p8080:8080/tcp \
   -e=AXIOM_URL=<https://cloud.axiom.co> \
-  -e=AXIOM_TOKEN=<xapt-xxxxx-xxxxxxx> \
+  -e=AXIOM_TOKEN=<xapt-xxxxx-xxxxxx> \
   axiomhq/axiom-honeycomb-proxy
 ```
 
