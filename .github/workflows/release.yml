@@ -3,10 +3,10 @@ name: Release
 on:
   push:
     tags:
-      - "*"
+      - "v*"
 
 env:
-  GOVERSION: "1.16"
+  GOVERSION: "1.17"
 
 jobs:
   release:
