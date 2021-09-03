@@ -62,15 +62,19 @@ Docker images are available on [DockerHub][docker].
 
 ## Usage
 
-1. Set the following environment variables:
+1. Set the following environment variables to connect to Axiom Cloud:
 
-* `AXIOM_TOKEN`: **Personal Access** or **Ingest** token. Can be
-created under `Profile` or `Settings > Ingest Tokens`. For security reasons it
-is advised to use an Ingest Token with minimal privileges only.
+* `AXIOM_TOKEN`: **Personal Access** or **Ingest** token. Can be created under
+  `Profile` or `Settings > Ingest Tokens`. For security reasons it is advised to
+  use an Ingest Token with minimal privileges only.
+* `AXIOM_ORG_ID`: The organization identifier of the organization to use
 
 When using Axiom Selfhost:
 
-* `AXIOM_URL`: URL of the Axiom deployment to use.
+* `AXIOM_TOKEN`: **Personal Access** or **Ingest** token. Can be created under
+  `Profile` or `Settings > Ingest Tokens`. For security reasons it is advised to
+  use an Ingest Token with minimal privileges only.
+* `AXIOM_URL`: URL of the Axiom deployment to use
 
 2. Run it: `./axiom-honeycomb-proxy` or using Docker:
 
