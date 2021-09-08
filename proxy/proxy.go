@@ -31,7 +31,7 @@ func init() {
 
 	// type check on axiom.Event incase it's ever not a map[string]interface{}
 	// so we can use unsafe.Pointer for a quick type conversion instead of allocating a new slice
-	if reflect.TypeOf(axiom.Event{}).ConvertibleTo(reflect.TypeOf(map[string]interface{}{})) == false {
+	if !reflect.TypeOf(axiom.Event{}).ConvertibleTo(reflect.TypeOf(map[string]interface{}{})) {
 		panic("axiom.Event is not a map[string]interface{}, please contact support")
 	}
 }
@@ -110,7 +110,7 @@ func (m *Multiplexer) multiplex(req *http.Request) error {
 		if err != nil {
 			return err
 		}
-		m.sendEvents(req.Context(), dataset, events...)
+		return m.sendEvents(req.Context(), dataset, events...)
 	}
 	return nil
 }
