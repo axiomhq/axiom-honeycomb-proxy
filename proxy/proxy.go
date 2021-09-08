@@ -5,11 +5,14 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"reflect"
 	"strings"
+	"unsafe"
 
 	"github.com/axiomhq/axiom-go/axiom"
 	"github.com/klauspost/compress/zstd"
@@ -24,6 +27,12 @@ func init() {
 	logger, err = zap.NewProduction()
 	if err != nil {
 		panic(err)
+	}
+
+	// type check on axiom.Event incase it's ever not a map[string]interface{}
+	// so we can use unsafe.Pointer for a quick type conversion instead of allocating a new slice
+	if reflect.TypeOf(axiom.Event{}).ConvertibleTo(reflect.TypeOf(map[string]interface{}{})) == false {
+		panic("axiom.Event is not a map[string]interface{}, please contact support")
 	}
 }
 
@@ -95,63 +104,53 @@ func (m *Multiplexer) multiplex(req *http.Request) error {
 
 	switch {
 	case strings.HasPrefix(req.URL.Path, "/1/events/"):
-		return m.multiplexEvents(req)
+		fallthrough
 	case strings.HasPrefix(req.URL.Path, "/1/batch/"):
-		return m.multiplexBatch(req)
-	default:
-		return nil
+		events, dataset, err := RequestToEvents(req)
+		if err != nil {
+			return err
+		}
+		m.sendEvents(req.Context(), dataset, events...)
 	}
+	return nil
 }
 
-func (m *Multiplexer) multiplexEvents(req *http.Request) error {
+func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, err error) {
 	splitStr := strings.Split(req.URL.Path, "/")
-	dataset := splitStr[len(splitStr)-1]
+	dataset = splitStr[len(splitStr)-1]
 
-	ev := axiom.Event{}
-
+	var v interface{}
 	switch req.Header.Get("Content-Type") {
 	case "application/msgpack":
-		if err := msgpack.NewDecoder(req.Body).Decode(&ev); err != nil {
-			return err
+		if err := msgpack.NewDecoder(req.Body).Decode(&v); err != nil {
+			return nil, "", err
 		}
 	default:
-		if err := json.NewDecoder(req.Body).Decode(&ev); err != nil {
-			return err
+		if err := json.NewDecoder(req.Body).Decode(&v); err != nil {
+			return nil, "", err
 		}
 	}
 
-	timeStr := req.Header.Get("X-Honeycomb-Event-Time")
-	if strings.TrimSpace(timeStr) != "" {
-		ev["_time"] = timeStr
-	}
-	return m.sendEvents(req.Context(), dataset, ev)
-}
-
-func (m *Multiplexer) multiplexBatch(req *http.Request) error {
-	splitStr := strings.Split(req.URL.Path, "/")
-	dataset := splitStr[len(splitStr)-1]
-
-	data := make([]map[string]interface{}, 0)
-
-	switch req.Header.Get("Content-Type") {
-	case "application/msgpack":
-		if err := msgpack.NewDecoder(req.Body).Decode(&data); err != nil {
-			return err
+	switch ev := v.(type) {
+	case map[string]interface{}:
+		timeStr := req.Header.Get("X-Honeycomb-Event-Time")
+		if strings.TrimSpace(timeStr) != "" {
+			ev["_time"] = timeStr
+		}
+		events = append(events, ev)
+	case []map[string]interface{}:
+		// NOTE: Breaks if axiom.Event is ever not a map[string]interface{} (see init)
+		events = *(*[]axiom.Event)(unsafe.Pointer(&ev))
+		for _, event := range events {
+			if timeStr, ok := event["time"].(string); ok {
+				event["_time"] = timeStr
+			}
 		}
 	default:
-		if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
-			return err
-		}
+		return nil, "", fmt.Errorf("unexpected event type %T", v)
 	}
 
-	events := make([]axiom.Event, len(data))
-	for i, d := range data {
-		events[i] = d["data"].(map[string]interface{})
-		if timeStr, ok := d["time"].(string); ok {
-			events[i]["_time"] = timeStr
-		}
-	}
-	return m.sendEvents(req.Context(), dataset, events...)
+	return
 }
 
 func (m *Multiplexer) sendEvents(ctx context.Context, dataset string, events ...axiom.Event) error {
