@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,7 +37,7 @@ func init() {
 	}
 }
 
-func decompress(rdr io.ReadCloser, encoding string) (io.ReadCloser, error) {
+func Decompress(rdr io.ReadCloser, encoding string) (io.ReadCloser, error) {
 	switch encoding {
 	case "gzip":
 		decomp, err := gzip.NewReader(rdr)
@@ -95,7 +96,7 @@ func (m *Multiplexer) multiplex(req *http.Request) error {
 		return nil
 	}
 
-	body, err := decompress(req.Body, req.Header.Get("Content-Encoding"))
+	body, err := Decompress(req.Body, req.Header.Get("Content-Encoding"))
 	if err != nil {
 		return err
 	}
@@ -115,9 +116,20 @@ func (m *Multiplexer) multiplex(req *http.Request) error {
 	return nil
 }
 
-func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, err error) {
+func getDatasetFromRequest(req *http.Request) (dataset string) {
 	splitStr := strings.Split(req.URL.Path, "/")
-	dataset = splitStr[len(splitStr)-1]
+	if len(splitStr) > 0 {
+		dataset = splitStr[len(splitStr)-1]
+	}
+	return
+}
+
+func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, err error) {
+	dataset = getDatasetFromRequest(req)
+	if dataset == "" {
+		err = errors.New("no dataset specified")
+		return
+	}
 
 	var v interface{}
 	switch req.Header.Get("Content-Type") {
@@ -146,8 +158,22 @@ func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, e
 				event["_time"] = timeStr
 			}
 		}
+	case []interface{}:
+		// manually parse each item as an event, we can't know for sure that every item will be a map, json is fun.
+
+		for index := range ev {
+			event, ok := ev[index].(map[string]interface{})
+			if ok == false {
+				return nil, "", fmt.Errorf("unexpected event type %T (%+v)", v, v)
+			}
+
+			if timeStr, ok := event["time"].(string); ok {
+				event["_time"] = timeStr
+			}
+			events = append(events, event)
+		}
 	default:
-		return nil, "", fmt.Errorf("unexpected event type %T", v)
+		return nil, "", fmt.Errorf("unexpected event type %T (%+v)", v, v)
 	}
 
 	return
