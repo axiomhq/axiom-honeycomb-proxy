@@ -163,7 +163,7 @@ func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, e
 
 		for index := range ev {
 			event, ok := ev[index].(map[string]interface{})
-			if ok == false {
+			if !ok {
 				return nil, "", fmt.Errorf("unexpected event type %T (%+v)", v, v)
 			}
 
