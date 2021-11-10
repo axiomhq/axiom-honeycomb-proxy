@@ -14,7 +14,10 @@ import (
 
 const defaultHoneyCombURL = "https://api.honeycomb.io"
 
-var addr = flag.String("addr", ":8080", "Listen address <ip>:<port>")
+var (
+	addr            = flag.String("addr", ":8080", "Listen address <ip>:<port>")
+	byPassHoneyComb = flag.Bool("bypass", false, "Bypass Honeycomb")
+)
 
 func main() {
 	cmd.Run("axiom-honeycomb-proxy", run,
@@ -28,7 +31,12 @@ func run(ctx context.Context, log *zap.Logger, client *axiom.Client) error {
 
 	flag.Parse()
 
-	mp, err := proxy.NewMultiplexer(client, defaultHoneyCombURL)
+	url := ""
+	if !*byPassHoneyComb {
+		url = defaultHoneyCombURL
+	}
+
+	mp, err := proxy.NewMultiplexer(client, url)
 	if err != nil {
 		return cmd.Error("create multiplexer", err)
 	}

@@ -57,38 +57,62 @@ func Decompress(rdr io.ReadCloser, encoding string) (io.ReadCloser, error) {
 	}
 }
 
+type hcServer struct {
+	proxy *httputil.ReverseProxy
+	URL   *url.URL
+}
+
+func (hcSrv *hcServer) Host() string {
+	return hcSrv.URL.Host
+}
+
+func (hcSrv *hcServer) Scheme() string {
+	return hcSrv.URL.Scheme
+}
+
 type Multiplexer struct {
-	client *axiom.Client
-	proxy  *httputil.ReverseProxy
-	hcURL  *url.URL
+	client   *axiom.Client
+	hcServer *hcServer
 }
 
 func NewMultiplexer(client *axiom.Client, honeycombEndpoint string) (*Multiplexer, error) {
-	hcURL, err := url.Parse(honeycombEndpoint)
-	if err != nil {
-		return nil, err
+	var hcSrv *hcServer
+	if honeycombEndpoint != "" {
+		hcURL, err := url.Parse(honeycombEndpoint)
+		if err != nil {
+			return nil, err
+		}
+		proxy := httputil.NewSingleHostReverseProxy(hcURL)
+		hcSrv = &hcServer{proxy: proxy, URL: hcURL}
 	}
 	return &Multiplexer{
-		client: client,
-		proxy:  httputil.NewSingleHostReverseProxy(hcURL),
-		hcURL:  hcURL,
+		client:   client,
+		hcServer: hcSrv,
 	}, nil
 }
 
 func (m *Multiplexer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
-	body := bytes.NewBuffer(nil)
-	req.Body = io.NopCloser(io.TeeReader(req.Body, body))
-	m.forward(resp, req)
-	req.Body = io.NopCloser(body)
+	if m.hcServer != nil {
+		body := bytes.NewBuffer(nil)
+		req.Body = io.NopCloser(io.TeeReader(req.Body, body))
+		m.forward(resp, req)
+		req.Body = io.NopCloser(body)
+	}
+
 	if err := m.multiplex(req); err != nil {
 		logger.Error(err.Error())
+		if m.hcServer == nil {
+			if _, wErr := resp.Write([]byte(err.Error())); wErr != nil {
+				logger.Error(wErr.Error())
+			}
+		}
 	}
 }
 
 func (m *Multiplexer) forward(resp http.ResponseWriter, req *http.Request) {
-	req.URL.Host = m.hcURL.Host
-	req.URL.Scheme = m.hcURL.Scheme
-	m.proxy.ServeHTTP(resp, req)
+	req.URL.Host = m.hcServer.Host()
+	req.URL.Scheme = m.hcServer.Scheme()
+	m.hcServer.proxy.ServeHTTP(resp, req)
 }
 
 func (m *Multiplexer) multiplex(req *http.Request) error {
