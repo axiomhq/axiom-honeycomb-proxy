@@ -102,7 +102,9 @@ func (m *Multiplexer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	if err := m.multiplex(req); err != nil {
 		logger.Error(err.Error())
 		if m.hcServer == nil {
-			resp.Write([]byte(err.Error()))
+			if _, wErr := resp.Write([]byte(err.Error())); wErr != nil {
+				logger.Error(wErr.Error())
+			}
 		}
 	}
 }
