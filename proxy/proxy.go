@@ -107,6 +107,12 @@ func (m *Multiplexer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
+
+	if m.hcServer == nil {
+		if _, wErr := resp.Write([]byte("{}")); wErr != nil {
+			logger.Error(wErr.Error())
+		}
+	}
 }
 
 func (m *Multiplexer) forward(resp http.ResponseWriter, req *http.Request) {
@@ -180,6 +186,7 @@ func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, e
 		for _, event := range events {
 			if timeStr, ok := event["time"].(string); ok {
 				event["_time"] = timeStr
+				delete(event, "time")
 			}
 		}
 	case []interface{}:
@@ -193,6 +200,7 @@ func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, e
 
 			if timeStr, ok := event["time"].(string); ok {
 				event["_time"] = timeStr
+				delete(event, "time")
 			}
 			events = append(events, event)
 		}
