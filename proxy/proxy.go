@@ -37,15 +37,6 @@ func init() {
 	}
 }
 
-type zstdCloser struct {
-	*zstd.Decoder
-}
-
-func (zc *zstdCloser) Close() error {
-	zc.Decoder.Close()
-	return nil
-}
-
 func Decompress(rdr io.ReadCloser, encoding string) (io.ReadCloser, error) {
 	switch encoding {
 	case "gzip":
@@ -53,15 +44,13 @@ func Decompress(rdr io.ReadCloser, encoding string) (io.ReadCloser, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer decomp.Close()
 		return decomp, nil
 	case "zstd":
 		decomp, err := zstd.NewReader(rdr)
 		if err != nil {
 			return nil, err
 		}
-		// else we leak
-		return &zstdCloser{Decoder: decomp}, nil
+		return decomp.IOReadCloser(), nil
 	default:
 		return rdr, nil
 	}
