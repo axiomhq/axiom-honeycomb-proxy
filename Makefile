@@ -18,25 +18,24 @@ GOLANGCI_LINT	:= bin/golangci-lint
 GORELEASER		:= bin/goreleaser
 GOTESTSUM		:= bin/gotestsum
 
-GOTOOLS := $(shell cat tools.go | grep "_ \"" | awk '{ print $$2 }' | tr -d '"')
-
 # MISC
 COVERPROFILE	:= coverage.out
-DIST_DIR	:= dist
+DIST_DIR		:= dist
 
-# TAGS
-GOTAGS	:= osusergo netgo static_build
+# GO TAGS
+GO_TAGS := osusergo netgo static_build
+
+# GO LD FLAGS
+GO_LD_FLAGS := -s -w -extldflags "-fno-PIC -static -Wl -z now -z relro"
+GO_LD_FLAGS += -X github.com/axiomhq/pkg/version.release=$(RELEASE)
+GO_LD_FLAGS += -X github.com/axiomhq/pkg/version.revision=$(REVISION)
+GO_LD_FLAGS += -X github.com/axiomhq/pkg/version.buildDate=$(BUILD_DATE)
+GO_LD_FLAGS += -X github.com/axiomhq/pkg/version.buildUser=$(USER)
 
 # FLAGS
-GOFLAGS := -buildmode=pie -tags='$(GOTAGS)' -installsuffix=cgo -trimpath
-GOFLAGS += -ldflags='-s -w -extldflags "-fno-PIC -static -Wl -z now -z relro"
-GOFLAGS += -X github.com/axiomhq/pkg/version.release=$(RELEASE)
-GOFLAGS += -X github.com/axiomhq/pkg/version.revision=$(REVISION)
-GOFLAGS += -X github.com/axiomhq/pkg/version.buildDate=$(BUILD_DATE)
-GOFLAGS += -X github.com/axiomhq/pkg/version.buildUser=$(USER)'
-
+GO_FLAGS 			:= -buildvcs=false -buildmode=pie -installsuffix=cgo -trimpath -tags='$(GO_TAGS)' -ldflags='$(GO_LD_FLAGS)'
 GO_TEST_FLAGS		:= -race -coverprofile=$(COVERPROFILE)
-GORELEASER_FLAGS	:= --snapshot --rm-dist
+GORELEASER_FLAGS	:= --snapshot --clean
 
 # DEPENDENCIES
 GOMODDEPS = go.mod go.sum
@@ -81,9 +80,6 @@ dep-upgrade: ## Upgrade all direct dependencies to their latest version
 	@echo ">> upgrading dependencies"
 	@$(GO) get -d $(shell $(GO) list -f '{{if not (or .Main .Indirect)}}{{.Path}}{{end}}' -m all)
 	@make dep
-
-.PHONY: dep-upgrade-tools
-dep-upgrade-tools: $(GOTOOLS) ## Upgrade all tool dependencies to their latest version and install them
 
 .PHONY: dep
 dep: dep-clean dep.stamp ## Install and verify dependencies and remove obsolete ones
@@ -143,8 +139,3 @@ $(GORELEASER): dep.stamp $(call go-pkg-sourcefiles, github.com/goreleaser/gorele
 $(GOTESTSUM): dep.stamp $(call go-pkg-sourcefiles, gotest.tools/gotestsum)
 	@echo ">> installing gotestsum"
 	@$(GO) install gotest.tools/gotestsum
-
-$(GOTOOLS): dep.stamp $(call go-pkg-sourcefiles, $@)
-	@echo ">> installing $@"
-	@$(GO) get -d $@
-	@$(GO) install $@

@@ -16,6 +16,7 @@ import (
 	"unsafe"
 
 	"github.com/axiomhq/axiom-go/axiom"
+	"github.com/axiomhq/axiom-go/axiom/ingest"
 	"github.com/klauspost/compress/zstd"
 	"github.com/vmihailenco/msgpack/v5"
 	"go.uber.org/zap"
@@ -176,7 +177,7 @@ func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, e
 	case map[string]interface{}:
 		timeStr := req.Header.Get("X-Honeycomb-Event-Time")
 		if strings.TrimSpace(timeStr) != "" {
-			ev["_time"] = timeStr
+			ev[ingest.TimestampField] = timeStr
 		}
 		events = append(events, ev)
 	case []map[string]interface{}:
@@ -184,7 +185,7 @@ func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, e
 		events = *(*[]axiom.Event)(unsafe.Pointer(&ev))
 		for _, event := range events {
 			if timeStr, ok := event["time"].(string); ok {
-				event["_time"] = timeStr
+				event[ingest.TimestampField] = timeStr
 				delete(event, "time")
 			}
 		}
@@ -198,7 +199,7 @@ func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, e
 			}
 
 			if timeStr, ok := event["time"].(string); ok {
-				event["_time"] = timeStr
+				event[ingest.TimestampField] = timeStr
 				delete(event, "time")
 			}
 			events = append(events, event)
@@ -211,9 +212,7 @@ func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, e
 }
 
 func (m *Multiplexer) sendEvents(ctx context.Context, dataset string, events ...axiom.Event) error {
-	opts := axiom.IngestOptions{}
-
-	status, err := m.client.Datasets.IngestEvents(ctx, dataset, opts, events...)
+	status, err := m.client.Datasets.IngestEvents(ctx, dataset, events)
 	if err != nil {
 		return err
 	}
