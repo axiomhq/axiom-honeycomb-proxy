@@ -1,0 +1,48 @@
+name: PR
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          check-latest: true
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v3
+
+  test:
+    name: Test
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          check-latest: true
+          cache: true
+          go-version-file: go.mod
+      - run: make test
+
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v3
+        with:
+          check-latest: true
+          cache: true
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v4
+        with:
+          args: build --snapshot

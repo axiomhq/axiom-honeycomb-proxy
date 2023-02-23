@@ -1,82 +1,58 @@
-# Axiom Honeycomb Proxy
+![axiom-honeycomb-proxy: Ship logs to Axiom and Honeycomb simultaneously](.github/images/banner-dark.svg#gh-dark-mode-only)
+![axiom-honeycomb-proxy: Ship logs to Axiom and Honeycomb simultaneously](.github/images/banner-light.svg#gh-light-mode-only)
 
-[![Go Workflow][go_workflow_badge]][go_workflow]
-[![Coverage Status][coverage_badge]][coverage]
-[![Go Report][report_badge]][report]
+<div align="center">
+
+[![Documentation][docs_badge]][docs]
+[![Go Workflow][workflow_badge]][workflow]
 [![Latest Release][release_badge]][release]
 [![License][license_badge]][license]
-[![Docker][docker_badge]][docker]
 
----
+</div>
 
-## Table of Contents
+[Axiom](https://axiom.co) unlocks observability at any scale.
 
-1. [Introduction](#introduction)
-1. [Usage](#usage)
-1. [Contributing](#contributing)
-1. [License](#license)
+- **Ingest with ease, store without limits:** Axiom's next-generation datastore
+  enables ingesting petabytes of data with ultimate efficiency. Ship logs from
+  Kubernetes, AWS, Azure, Google Cloud, DigitalOcean, Nomad, and others.
+- **Query everything, all the time:** Whether DevOps, SecOps, or EverythingOps,
+  query all your data no matter its age. No provisioning, no moving data from
+  cold/archive to "hot", and no worrying about slow queries. All your data, all.
+  the. time.
+- **Powerful dashboards, for continuous observability:** Build dashboards to
+  collect related queries and present information that's quick and easy to
+  digest for you and your team. Dashboards can be kept private or shared with
+  others, and are the perfect way to bring together data from different sources.
 
-## Introduction
-
-_Axiom Honeycomb Proxy_ ships logs to Axiom and Honeycomb simultaneously.
-
-## Installation
-
-### Download the pre-compiled and archived binary manually
-
-Binary releases are available on [GitHub Releases][2].
-
-  [2]: https://github.com/axiomhq/axiom-honeycomb-proxy/releases/latest
-
-### Install using [Homebrew](https://brew.sh)
-
-```shell
-brew tap axiomhq/tap
-brew install axiom-honeycomb-proxy
-```
-
-To update:
-
-```shell
-brew update
-brew upgrade axiom-honeycomb-proxy
-```
-
-### Install using `go get`
-
-```shell
-go get -u github.com/axiomhq/axiom-honeycomb-proxy/cmd/axiom-honeycomb-proxy
-```
-
-### Install from source
-
-```shell
-git clone https://github.com/axiomhq/axiom-honeycomb-proxy.git
-cd axiom-honeycomb-proxy
-make install
-```
-
-### Run the Docker image
-
-Docker images are available on [DockerHub][docker].
+For more information check out the
+[official documentation](https://axiom.co/docs) and our
+[community Discord](https://axiom.co/discord).
 
 ## Usage
 
-1. Set the following environment variables to connect to Axiom Cloud:
+There are multiple ways you can install _Axiom Honeycomb Proxy_:
 
-* `AXIOM_TOKEN`: **Personal Access** or **Ingest** token. Can be created under
-  `Profile` or `Settings > Ingest Tokens`. For security reasons it is advised to
-  use an Ingest Token with minimal privileges only.
-* `AXIOM_ORG_ID`: The organization identifier of the organization to use
+- With Homebrew: `brew install axiomhq/tap/axiom`
+- Download the pre-built binary from the
+  [GitHub Releases](https://github.com/axiomhq/axiom-honeycomb-proxy/releases/latest)
+- Using Go:
+  `go install github.com/axiomhq/axiom-honeycomb-proxy/cmd/axiom@latest`
+- Use the
+  [Docker image](https://hub.docker.com/r/axiomhq/axiom-honeycomb-proxy):
+  `docker run axiomhq/axiom-honeycomb-proxy`
 
-When using Axiom Selfhost:
+Create an api token in `Settings > API Tokens` with minimal privileges (`ingest`
+permission for the dataset(s) you want to ingest into) and export it as
+`AXIOM_TOKEN`.
 
-* `AXIOM_TOKEN`: **Personal Access** or **Ingest** token. Can be created under
-  `Profile` or `Settings > Ingest Tokens`. For security reasons it is advised to
-  use an Ingest Token with minimal privileges only.
-* `AXIOM_URL`: URL of the Axiom deployment to use
+Alternatively, if you use the [Axiom CLI](https://github.com/axiomhq/cli), run
+`eval $(axiom config export -f)` to configure your environment variables.
+Otherwise create a personal token in
+[the Axiom settings](https://app.axiom.co/profile) and export it as
+`AXIOM_TOKEN`. Set `AXIOM_ORG_ID` to the organization ID from the settings
+page of the organization you want to access.
 
-2. Run it: `./axiom-honeycomb-proxy` or using Docker:
+Run it: `axiom-honeycomb-proxy` or using Docker:
 
 ```shell
 docker run -p8080:8080/tcp \
@@ -84,23 +60,25 @@ docker run -p8080:8080/tcp \
   axiomhq/axiom-honeycomb-proxy
 ```
 
-3. Point all Honeycomb related tools at the proxy deployment.
+**Important:** Honeycomb creates datasets when you push data to them. Axiom does
+not support this. Make sure you create the matching datasets in Axiom, first.
 
-### Request format
+Point all Honeycomb related tools at the proxy deployment which accepts data on
+the following endpoints:
 
-#### Single event requests
+### Single event requests
 
 ```shell
-curl http://localhost:3111/honeycomb/v1/events/<DATASET> -X POST \
+curl http://localhost:8080/honeycomb/v1/events/<DATASET> -X POST \
   -H "X-Honeycomb-Team: <YOUR-HONEYCOMB-KEY>" \
   -H "X-Honeycomb-Event-Time: 2018-02-09T02:01:23.115Z" \
   -d '{"method":"GET","endpoint":"/foo","shard":"users","dur_ms":32}'
 ```
 
-#### Event batch requests
+### Event batch requests
 
 ```shell
-curl  http://localhost:3111/honeycomb/v1/batch/<DATASET> -X POST \
+curl  http://localhost:8080/honeycomb/v1/batch/<DATASET> -X POST \
   -H "X-Honeycomb-Team: <YOUR-HONEYCOMB-KEY>" \
   -d '[
         {
@@ -113,39 +91,17 @@ curl  http://localhost:3111/honeycomb/v1/batch/<DATASET> -X POST \
       ]'
 ```
 
-### Note
-
-Honeycomb creates datasets when you push data to them. Axiom does not support
-that (yet). Make sure you create the matching datasets on the Axiom side, first.
-
-## Contributing
-
-Feel free to submit PRs or to fill issues. Every kind of help is appreciated. 
-
-Before committing, `make` should run without any issues.
-
-Kindly check our [Contributing](Contributing.md) guide on how to propose
-bugfixes and improvements, and submitting pull requests to the project.
-
 ## License
 
-&copy; Axiom, Inc., 2021
-
-Distributed under MIT License (`The MIT License`).
-
-See [LICENSE](LICENSE) for more information.
+Distributed under the [MIT License](./LICENSE).
 
 <!-- Badges -->
 
-[go_workflow]: https://github.com/axiomhq/axiom-honeycomb-proxy/actions/workflows/push.yml
-[go_workflow_badge]: https://img.shields.io/github/workflow/status/axiomhq/axiom-honeycomb-proxy/Push?style=flat-square&ghcache=unused
-[coverage]: https://codecov.io/gh/axiomhq/axiom-honeycomb-proxy
-[coverage_badge]: https://img.shields.io/codecov/c/github/axiomhq/axiom-honeycomb-proxy.svg?style=flat-square&ghcache=unused
-[report]: https://goreportcard.com/report/github.com/axiomhq/axiom-honeycomb-proxy
-[report_badge]: https://goreportcard.com/badge/github.com/axiomhq/axiom-honeycomb-proxy?style=flat-square&ghcache=unused
+[docs]: https://docs.axiom.co
+[docs_badge]: https://img.shields.io/badge/docs-reference-blue.svg
+[workflow]: https://github.com/axiomhq/axiom-honeycomb-proxy/actions/workflows/push.yaml
+[workflow_badge]: https://img.shields.io/github/actions/workflow/status/axiomhq/axiom-honeycomb-proxy/push.yaml?branch=main&ghcache=unused
 [release]: https://github.com/axiomhq/axiom-honeycomb-proxy/releases/latest
-[release_badge]: https://img.shields.io/github/release/axiomhq/axiom-honeycomb-proxy.svg?style=flat-square&ghcache=unused
+[release_badge]: https://img.shields.io/github/release/axiomhq/axiom-honeycomb-proxy.svg
 [license]: https://opensource.org/licenses/MIT
-[license_badge]: https://img.shields.io/github/license/axiomhq/axiom-honeycomb-proxy.svg?color=blue&style=flat-square&ghcache=unused
-[docker]: https://hub.docker.com/r/axiomhq/axiom-honeycomb-proxy
-[docker_badge]: https://img.shields.io/docker/pulls/axiomhq/axiom-honeycomb-proxy.svg?style=flat-square&ghcache=unused
+[license_badge]: https://img.shields.io/github/license/axiomhq/axiom-honeycomb-proxy.svg?color=blue
