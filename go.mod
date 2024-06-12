@@ -7,7 +7,7 @@ require (
 	github.com/axiomhq/pkg v0.6.0
 	github.com/golangci/golangci-lint v1.59.1
 	github.com/goreleaser/goreleaser/v2 v2.0.1
-	github.com/klauspost/compress v1.17.8
+	github.com/klauspost/compress v1.17.9
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	go.uber.org/zap v1.27.0
 	gotest.tools/gotestsum v1.12.0
