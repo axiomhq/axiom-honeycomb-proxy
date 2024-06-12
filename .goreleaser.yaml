@@ -1,3 +1,5 @@
+version: 2
+
 project_name: axiom-honeycomb-proxy
 
 builds:
@@ -36,7 +38,7 @@ builds:
     goarch:
       - amd64
       - arm64
-    
+
   - <<: *build_defaults
     flags:
       - -buildvcs=false
@@ -76,7 +78,6 @@ builds:
 archives:
   - <<: &archive_defaults
       name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-      rlcp: true
     id: nix
     builds:
       - darwin
@@ -125,7 +126,7 @@ brews:
     description: Honeycomb compatible log forwarding and multiplexing proxy for Axiom
     homepage: https://axiom.co
     license: MIT
-    tap:
+    repository:
       owner: axiomhq
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TOKEN }}"
@@ -133,7 +134,7 @@ brews:
       name: axiom-automation
       email: hello@axiom.co
     skip_upload: auto
-    folder: Formula
+    directory: Formula
     install: bin.install "{{ .ProjectName }}"
     test: assert_match "x", "x"
 

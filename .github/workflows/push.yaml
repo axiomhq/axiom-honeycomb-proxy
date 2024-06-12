@@ -10,12 +10,15 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          check-latest: true
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v3
+          cache: false
+      - run: echo "GOLANGCI_LINT_VERSION=$(go list -m -f '{{.Version}}' github.com/golangci/golangci-lint)" >> $GITHUB_ENV
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
 
   test:
     name: Test
@@ -28,11 +31,9 @@ jobs:
           - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          check-latest: true
-          cache: true
           go-version-file: go.mod
       - run: make test
 
@@ -41,14 +42,14 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v5
         with:
-          check-latest: true
-          cache: true
           go-version-file: go.mod
-      - uses: goreleaser/goreleaser-action@v4
+      - run: echo "GORELEASER_VERSION=$(go list -m -f '{{.Version}}' github.com/goreleaser/goreleaser/v2)" >> $GITHUB_ENV
+      - uses: goreleaser/goreleaser-action@v6
         with:
+          version: ${{ env.GORELEASER_VERSION }}
           args: build --snapshot
