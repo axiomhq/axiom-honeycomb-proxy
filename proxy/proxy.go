@@ -33,7 +33,7 @@ func init() {
 
 	// type check on axiom.Event incase it's ever not a map[string]interface{}
 	// so we can use unsafe.Pointer for a quick type conversion instead of allocating a new slice
-	if !reflect.TypeOf(axiom.Event{}).ConvertibleTo(reflect.TypeOf(map[string]interface{}{})) {
+	if !reflect.TypeOf(axiom.Event{}).ConvertibleTo(reflect.TypeOf(map[string]any{})) {
 		panic("axiom.Event is not a map[string]interface{}, please contact support")
 	}
 }
@@ -161,7 +161,7 @@ func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, e
 		return
 	}
 
-	var v interface{}
+	var v any
 	switch req.Header.Get("Content-Type") {
 	case "application/msgpack":
 		if err := msgpack.NewDecoder(req.Body).Decode(&v); err != nil {
@@ -174,13 +174,13 @@ func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, e
 	}
 
 	switch ev := v.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		timeStr := req.Header.Get("X-Honeycomb-Event-Time")
 		if strings.TrimSpace(timeStr) != "" {
 			ev[ingest.TimestampField] = timeStr
 		}
 		events = append(events, ev)
-	case []map[string]interface{}:
+	case []map[string]any:
 		// NOTE: Breaks if axiom.Event is ever not a map[string]interface{} (see init)
 		events = *(*[]axiom.Event)(unsafe.Pointer(&ev))
 		for _, event := range events {
@@ -189,11 +189,11 @@ func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, e
 				delete(event, "time")
 			}
 		}
-	case []interface{}:
+	case []any:
 		// manually parse each item as an event, we can't know for sure that every item will be a map, json is fun.
 
 		for index := range ev {
-			event, ok := ev[index].(map[string]interface{})
+			event, ok := ev[index].(map[string]any)
 			if !ok {
 				return nil, "", fmt.Errorf("unexpected event type %T (%+v)", v, v)
 			}

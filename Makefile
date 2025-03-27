@@ -1,7 +1,6 @@
 # TOOLCHAIN
-GO				:= CGO_ENABLED=0 GOBIN=$(CURDIR)/bin go
-GO_BIN_IN_PATH  := CGO_ENABLED=0 go
-GOFMT			:= $(GO)fmt
+GO	  := CGO_ENABLED=0 go
+CGO	  := CGO_ENABLED=1 go
 
 # ENVIRONMENT
 VERBOSE	=
@@ -12,11 +11,6 @@ BUILD_DATE	:= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 REVISION	:= $(shell git rev-parse --short HEAD)
 RELEASE		:= $(shell git describe --tags 2>/dev/null || git rev-parse --short HEAD)-dev
 USER		:= $(shell whoami)
-
-# GO TOOLS
-GOLANGCI_LINT	:= bin/golangci-lint
-GORELEASER		:= bin/goreleaser
-GOTESTSUM		:= bin/gotestsum
 
 # MISC
 COVERPROFILE	:= coverage.out
@@ -56,19 +50,19 @@ go-pkg-sourcefiles = $(shell $(call go-list-pkg-sources,$(strip $1)))
 all: dep fmt lint test build ## Run dep, fmt, lint, test and build
 
 .PHONY: build
-build: $(GORELEASER) dep.stamp $(call go-pkg-sourcefiles, ./...) ## Build the binaries
+build: dep.stamp $(call go-pkg-sourcefiles, ./...) ## Build the binaries
 	@echo ">> building binaries"
-	@$(GORELEASER) build $(GORELEASER_FLAGS)
+	@$(GO) tool goreleaser build $(GORELEASER_FLAGS)
 
 .PHONY: clean
 clean: ## Remove build and test artifacts
 	@echo ">> cleaning up artifacts"
 	@rm -rf bin $(DIST_DIR) $(COVERPROFILE) dep.stamp
 
-.PHONY: coverage
-coverage: $(COVERPROFILE) ## Calculate the code coverage score
+.PHONY: cover
+cover: $(COVERPROFILE) ## Calculate the code coverage score
 	@echo ">> calculating code coverage"
-	@$(GO) tool cover -func=$(COVERPROFILE) | grep total | awk '{print $$3}'
+	@$(GO) tool cover -func=$(COVERPROFILE) | tail -n1
 
 .PHONY: dep-clean
 dep-clean: ## Remove obsolete dependencies
@@ -78,7 +72,7 @@ dep-clean: ## Remove obsolete dependencies
 .PHONY: dep-upgrade
 dep-upgrade: ## Upgrade all direct dependencies to their latest version
 	@echo ">> upgrading dependencies"
-	@$(GO) get -d $(shell $(GO) list -f '{{if not (or .Main .Indirect)}}{{.Path}}{{end}}' -m all)
+	@$(GO) get $(shell $(GO) list -f '{{if not (or .Main .Indirect)}}{{.Path}}{{end}}' -m all)
 	@make dep
 
 .PHONY: dep
@@ -91,25 +85,22 @@ dep.stamp: $(GOMODDEPS)
 	@touch $@
 
 .PHONY: fmt
-fmt: ## Format and simplify the source code using `gofmt`
+fmt: ## Format and simplify the source code using `golangci-lint fmt`
 	@echo ">> formatting code"
-	@! $(GOFMT) -s -w $(shell find . -path -prune -o -name '*.go' -print) | grep '^'
+	@$(GO) tool golangci-lint fmt
 
 .PHONY: install
 install: $(GOPATH)/bin/axiom-honeycomb-proxy ## Install the binary into the $GOPATH/bin directory
 
 .PHONY: lint
-lint: $(GOLANGCI_LINT) ## Lint the source code
+lint: ## Lint the source code
 	@echo ">> linting code"
-	@$(GOLANGCI_LINT) run
+	@$(GO) tool golangci-lint run
 
 .PHONY: test
-test: $(GOTESTSUM) ## Run all tests. Run with VERBOSE=1 to get verbose test output (`-v` flag)
+test: ## Run all tests. Run with VERBOSE=1 to get verbose test output ('-v' flag).
 	@echo ">> running tests"
-	@$(GOTESTSUM) $(GOTESTSUM_FLAGS) -- $(GO_TEST_FLAGS) ./...
-
-.PHONY: tools
-tools: $(GOLANGCI_LINT) $(GORELEASER) $(GOTESTSUM) ## Install all tools into the projects local $GOBIN directory
+	@$(CGO) tool gotestsum $(GOTESTSUM_FLAGS) -- $(GO_TEST_FLAGS) ./...
 
 .PHONY: help
 help:
@@ -119,23 +110,3 @@ help:
 
 $(COVERPROFILE):
 	@make test
-
-# INSTALL TARGETS
-
-$(GOPATH)/bin/axiom-honeycomb-proxy: dep.stamp $(call go-pkg-sourcefiles, ./...)
-	@echo ">> installing axiom-honeycomb-proxy binary"
-	@$(GO_BIN_IN_PATH) install $(GOFLAGS) ./cmd/axiom-honeycomb-proxy
-
-# GO TOOLS
-
-$(GOLANGCI_LINT): dep.stamp $(call go-pkg-sourcefiles, github.com/golangci/golangci-lint/cmd/golangci-lint)
-	@echo ">> installing golangci-lint"
-	@$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint
-
-$(GORELEASER): dep.stamp $(call go-pkg-sourcefiles, github.com/goreleaser/goreleaser/v2)
-	@echo ">> installing goreleaser"
-	@$(GO) install github.com/goreleaser/goreleaser/v2
-
-$(GOTESTSUM): dep.stamp $(call go-pkg-sourcefiles, gotest.tools/gotestsum)
-	@echo ">> installing gotestsum"
-	@$(GO) install gotest.tools/gotestsum
