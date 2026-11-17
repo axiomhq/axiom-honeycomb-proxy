@@ -102,7 +102,9 @@ func (m *Multiplexer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	if err := m.multiplex(req); err != nil {
 		logger.Error(err.Error())
 		if m.hcServer == nil {
-			if _, wErr := resp.Write([]byte(err.Error())); wErr != nil {
+			resp.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			resp.Header().Set("X-Content-Type-Options", "nosniff")
+			if _, wErr := resp.Write([]byte(err.Error())); wErr != nil { //nolint:gosec // G705: served as nosniff text/plain, never HTML.
 				logger.Error(wErr.Error())
 			}
 		}
