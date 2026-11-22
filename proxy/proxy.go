@@ -24,6 +24,8 @@ import (
 
 var logger *zap.Logger
 
+var errIngest = errors.New("ingest events")
+
 func init() {
 	var err error
 	logger, err = zap.NewProduction()
@@ -33,7 +35,7 @@ func init() {
 
 	// type check on axiom.Event incase it's ever not a map[string]interface{}
 	// so we can use unsafe.Pointer for a quick type conversion instead of allocating a new slice
-	if !reflect.TypeOf(axiom.Event{}).ConvertibleTo(reflect.TypeOf(map[string]any{})) {
+	if !reflect.TypeFor[axiom.Event]().ConvertibleTo(reflect.TypeFor[map[string]any]()) {
 		panic("axiom.Event is not a map[string]interface{}, please contact support")
 	}
 }
@@ -102,9 +104,12 @@ func (m *Multiplexer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	if err := m.multiplex(req); err != nil {
 		logger.Error(err.Error())
 		if m.hcServer == nil {
-			if _, wErr := resp.Write([]byte(err.Error())); wErr != nil {
-				logger.Error(wErr.Error())
+			code := http.StatusBadRequest
+			if errors.Is(err, errIngest) {
+				code = http.StatusBadGateway
 			}
+			http.Error(resp, err.Error(), code)
+			return
 		}
 	}
 
@@ -141,17 +146,18 @@ func (m *Multiplexer) multiplex(req *http.Request) error {
 		if err != nil {
 			return err
 		}
-		return m.sendEvents(req.Context(), dataset, events...)
+		if err := m.sendEvents(req.Context(), dataset, events...); err != nil {
+			return fmt.Errorf("%w: %w", errIngest, err)
+		}
 	}
 	return nil
 }
 
-func getDatasetFromRequest(req *http.Request) (dataset string) {
-	splitStr := strings.Split(req.URL.Path, "/")
-	if len(splitStr) > 0 {
-		dataset = splitStr[len(splitStr)-1]
+func getDatasetFromRequest(req *http.Request) string {
+	if _, dataset, ok := strings.CutLast(req.URL.Path, "/"); ok {
+		return dataset
 	}
-	return
+	return req.URL.Path
 }
 
 func RequestToEvents(req *http.Request) (events []axiom.Event, dataset string, err error) {
