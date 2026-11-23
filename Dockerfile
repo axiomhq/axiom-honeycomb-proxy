@@ -8,7 +8,8 @@ RUN apk update --no-cache                 \
     && apk add --no-cache ca-certificates
 
 # Copy binary into image.
-COPY axiom-honeycomb-proxy /usr/bin/axiom-honeycomb-proxy
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/axiom-honeycomb-proxy /usr/bin/axiom-honeycomb-proxy
 
 # Use the project name as working directory.
 WORKDIR /axiom-honeycomb-proxy
